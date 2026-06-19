@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { headers } from 'next/headers'
 import { Check, Copy } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -29,12 +30,15 @@ export default async function DeployPage() {
     )
   }
 
-  // Use a relative or placeholder origin for SSR, the actual origin can be inferred 
-  // or hardcoded to the production URL, but usually it's best to let users know the script URL.
-  // We'll use a placeholder since this is server-rendered, or we can use headers.
+  // Use environment variable or dynamically infer from request headers
+  const headersList = await headers()
+  const host = headersList.get('host')
+  const protocol = headersList.get('x-forwarded-proto') || (host?.includes('localhost') ? 'http' : 'https')
+  const defaultOrigin = `${protocol}://${host}`
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || defaultOrigin
   
   const scriptSnippet = `<script
-  src="https://leadflowai.deestudio.com/widget.js"
+  src="${baseUrl}/widget.js"
   data-token="${business.embed_token}">
 </script>`
 
