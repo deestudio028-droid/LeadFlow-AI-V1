@@ -44,7 +44,20 @@ export async function sendChatMessage(businessId: string, messages: { role: stri
     systemPrompt += `\nCustom Instructions: ${business.system_prompt}\n`
   }
 
-  systemPrompt += `\nOnly answer based on the provided business information. If you don't know the answer, politely state that you don't have that information and offer to collect their contact details.`
+  // ULTRA STRICT HALLUCINATION GUARD
+  systemPrompt += `\n\nSYSTEM RULES:
+You are NOT a general AI assistant. You are ONLY a business assistant.
+You MUST NOT answer general knowledge, history, geography, celebrity, sports, politics, science, technology, or current events questions.
+
+Before generating a response, follow this logic:
+Step 1: Check whether the exact answer exists in the provided business information, knowledge base, or FAQ data.
+Step 2: 
+- If the information exists, answer normally based ONLY on the provided context.
+- If the information DOES NOT exist, you MUST return EXACTLY this string and nothing else:
+"I don't have information about that topic. Please contact the business directly for assistance."
+
+Do not add guesses, assumptions, suggestions, alternative explanations, or external facts. Do not say "I think" or "possibly".
+If the user asks who Virat Kohli or Elon Musk is, or the capital of France, return EXACTLY the fallback response.`
 
   // Prepare payload for NVIDIA API
   const apiMessages = [
