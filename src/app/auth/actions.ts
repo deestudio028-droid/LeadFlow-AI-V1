@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export async function login(formData: FormData) {
   const supabase = await createClient()
@@ -30,10 +31,25 @@ export async function signup(formData: FormData) {
     password: formData.get('password') as string,
   }
 
-  const { error } = await supabase.auth.signUp(data)
+  const { data: authData, error } = await supabase.auth.signUp(data)
 
   if (error) {
     return { error: error.message }
+  }
+
+  // Explicit profile creation to ensure consistency (idempotent via upsert or ignore)
+  if (authData?.user) {
+    const adminClient = createAdminClient()
+    const { error: profileError } = await adminClient
+      .from('profiles')
+      .upsert(
+        { id: authData.user.id, role: 'Client' },
+        { onConflict: 'id', ignoreDuplicates: true }
+      )
+      
+    if (profileError) {
+      console.error('Failed to auto-create profile during signup:', profileError)
+    }
   }
 
   revalidatePath('/', 'layout')

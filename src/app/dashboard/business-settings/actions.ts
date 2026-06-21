@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 
 export async function saveBusinessSettings(formData: FormData) {
@@ -27,6 +28,32 @@ export async function saveBusinessSettings(formData: FormData) {
   }
   
   console.log('Payload:', data)
+
+  // ==========================================
+  // SELF-HEALING SYSTEM: Ensure Profile Exists
+  // ==========================================
+  const adminClient = createAdminClient()
+  
+  // Try to find the profile
+  const { data: profile } = await adminClient
+    .from('profiles')
+    .select('id')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile) {
+    console.log('Self-healing: Profile missing. Automatically creating profile for user:', user.id)
+    const { error: profileError } = await adminClient
+      .from('profiles')
+      .insert({ id: user.id, role: 'Client' })
+
+    if (profileError) {
+      console.error('Self-healing Failed: Could not create profile.', profileError)
+      return { error: 'Database consistency error: Failed to create user profile. Please contact support.' }
+    }
+    console.log('Self-healing: Profile created successfully.')
+  }
+  // ==========================================
 
   // Check if business exists
   const { data: existingBusinesses, error: fetchError } = await supabase

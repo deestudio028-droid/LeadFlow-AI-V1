@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Settings, BookOpen, BotMessageSquare, MonitorPlay, Rocket, LogOut, Menu, X } from 'lucide-react'
+import { LayoutDashboard, Settings, BookOpen, BotMessageSquare, MonitorPlay, Rocket, LogOut, Menu, X, Users } from 'lucide-react'
 import { signout } from '@/app/auth/actions'
 
 export default function Sidebar() {
@@ -12,6 +12,7 @@ export default function Sidebar() {
 
   const links = [
     { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
+    { href: '/dashboard/leads', label: 'Leads', icon: Users },
     { href: '/dashboard/business-settings', label: 'Business Settings', icon: Settings },
     { href: '/dashboard/knowledge-base', label: 'Knowledge Base', icon: BookOpen },
     { href: '/dashboard/test-bot', label: 'Test Bot', icon: BotMessageSquare },
