@@ -9,6 +9,11 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
 
+// Simple in-memory rate limiter (per Edge container)
+const rateLimitMap = new Map<string, { count: number, resetAt: number }>();
+const RATE_LIMIT_MAX = 20; // 20 requests per minute
+const RATE_LIMIT_WINDOW_MS = 60000;
+
 // Handle CORS for external widgets
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -30,6 +35,34 @@ export async function POST(request: Request) {
         status: 400,
         headers: { 'Access-Control-Allow-Origin': '*' }
       })
+    }
+
+    // Rate Limiting Logic
+    const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown'
+    const now = Date.now()
+    const rateData = rateLimitMap.get(ip)
+
+    if (rateData && now < rateData.resetAt) {
+      if (rateData.count >= RATE_LIMIT_MAX) {
+        // Log to audit logs if this is the first time we block them in this window (to avoid spamming logs)
+        if (rateData.count === RATE_LIMIT_MAX) {
+          const adminClient = createAdminClient()
+          await adminClient.from('audit_logs').insert({
+            action: 'RATE_LIMIT_EXCEEDED',
+            target_type: 'System',
+            details: { ip, endpoint: '/api/chat', token }
+          })
+        }
+        rateLimitMap.set(ip, { ...rateData, count: rateData.count + 1 })
+        
+        return NextResponse.json({ error: 'Too many requests' }, { 
+          status: 429,
+          headers: { 'Access-Control-Allow-Origin': '*' }
+        })
+      }
+      rateLimitMap.set(ip, { count: rateData.count + 1, resetAt: rateData.resetAt })
+    } else {
+      rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
     }
 
     // Initialize Supabase anon client

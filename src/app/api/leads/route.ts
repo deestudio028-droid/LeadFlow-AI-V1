@@ -25,6 +25,30 @@ export async function POST(request: Request) {
       })
     }
 
+    // Validation Rules
+    const nameStr = visitor_name.trim()
+    const phoneStr = visitor_phone.trim()
+
+    // Name must be between 2 and 100 characters and contain valid letters
+    // Allow spaces, hyphens, and apostrophes (e.g., O'Brien, Mary-Jane)
+    const nameRegex = /^[\p{L}\s'-]{2,100}$/u
+    if (!nameRegex.test(nameStr)) {
+      return NextResponse.json({ error: 'Invalid name format' }, { 
+        status: 400,
+        headers: { 'Access-Control-Allow-Origin': '*' }
+      })
+    }
+
+    // Phone must contain 7-15 digits, optional leading plus, and optional formatting characters like spaces or dashes
+    const phoneRegex = /^\+?[\d\s-]{7,20}$/
+    const digitsOnly = phoneStr.replace(/\D/g, '')
+    if (!phoneRegex.test(phoneStr) || digitsOnly.length < 7 || digitsOnly.length > 15) {
+      return NextResponse.json({ error: 'Invalid phone number format' }, { 
+        status: 400,
+        headers: { 'Access-Control-Allow-Origin': '*' }
+      })
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     const supabase = createClient(supabaseUrl, supabaseKey)

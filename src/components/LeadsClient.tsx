@@ -128,8 +128,18 @@ export default function LeadsClient({ initialLeads }: { initialLeads: Lead[] }) 
           <tbody className="divide-y divide-neutral-800/50">
             {paginatedLeads.length === 0 ? (
               <tr>
-                <td colSpan={5} className="p-8 text-center text-neutral-500">
-                  No leads found matching your criteria.
+                <td colSpan={5} className="p-16 text-center">
+                  {leads.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
+                      <div className="w-16 h-16 bg-blue-500/10 text-blue-500 rounded-full flex items-center justify-center mb-4">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+                      </div>
+                      <h3 className="text-xl font-bold text-white mb-2">No leads captured yet</h3>
+                      <p className="text-neutral-400 mb-6">Install your widget and let the AI receptionist start capturing leads for you automatically.</p>
+                    </div>
+                  ) : (
+                    <span className="text-neutral-500">No leads found matching your criteria.</span>
+                  )}
                 </td>
               </tr>
             ) : (

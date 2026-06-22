@@ -359,9 +359,19 @@
     scrollToBottom();
 
     document.getElementById('lf-lead-submit').addEventListener('click', async () => {
-      const name = document.getElementById('lf-lead-name').value;
-      const phone = document.getElementById('lf-lead-phone').value;
+      const name = document.getElementById('lf-lead-name').value.trim();
+      const phone = document.getElementById('lf-lead-phone').value.trim();
+      
       if (!name || !phone) return alert('Please enter both name and phone number.');
+      
+      const nameRegex = /^[^\d]{2,100}$/;
+      if (!nameRegex.test(name)) return alert('Please enter a valid name (letters only).');
+
+      const phoneRegex = /^[\d\s\-\+]{7,20}$/;
+      const digitsOnly = phone.replace(/\D/g, '');
+      if (!phoneRegex.test(phone) || digitsOnly.length < 7 || digitsOnly.length > 15) {
+        return alert('Please enter a valid phone number (7-15 digits).');
+      }
       
       document.getElementById('lf-lead-submit').innerText = 'Submitting...';
       
