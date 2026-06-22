@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 // Since this is a public endpoint called by the widget, we can use the anon key 
 // BUT we must bypass RLS if needed, or rely on the RLS "Public can read active business by embed_token"
 // Let's use the standard anon client since RLS allows reading active businesses.
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
 
@@ -99,6 +100,8 @@ If the user asks who Virat Kohli or Elon Musk is, or the capital of France, retu
       ...messages
     ]
 
+    const startTime = Date.now()
+
     const response = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -113,8 +116,91 @@ If the user asks who Virat Kohli or Elon Musk is, or the capital of France, retu
       })
     })
 
+    const endTime = Date.now()
+    const responseTime = endTime - startTime
+
     if (!response.ok) {
-      console.error('NVIDIA API Error:', await response.text())
+      console.error('Primary NVIDIA API Error:', await response.text())
+      
+      // FAILOVER LOGIC
+      if (response.status === 429 || response.status === 401) {
+        console.warn('Attempting failover to Backup Key...')
+        const adminClient = createAdminClient()
+        
+        // Log Audit Event
+        await adminClient.from('audit_logs').insert({
+          action: 'API_KEY_FAILOVER',
+          target_type: 'System',
+          details: { reason: `Primary key returned ${response.status}`, business_id: business.id }
+        })
+
+        // Retry with backup key
+        if (process.env.NVIDIA_API_KEY_BACKUP) {
+          const startTimeBackup = Date.now()
+          const backupResponse = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${process.env.NVIDIA_API_KEY_BACKUP}`
+            },
+            body: JSON.stringify({
+              model: 'meta/llama-3.1-8b-instruct',
+              messages: apiMessages,
+              temperature: 0.2,
+              max_tokens: 500,
+            })
+          })
+
+          const backupTime = Date.now() - startTimeBackup
+
+          if (!backupResponse.ok) {
+            // Log failed backup request
+            await supabase.from('api_requests_log').insert({
+              business_id: business.id,
+              endpoint: 'chat/completions (backup)',
+              status_code: backupResponse.status,
+              response_time_ms: backupTime,
+              error_message: await backupResponse.text()
+            })
+
+            return NextResponse.json({ error: 'Failed to generate AI response (Backup Failed)' }, { 
+              status: 500,
+              headers: { 'Access-Control-Allow-Origin': '*' }
+            })
+          }
+
+          const data = await backupResponse.json()
+          
+          // Log successful backup request
+          await supabase.from('api_requests_log').insert({
+            business_id: business.id,
+            endpoint: 'chat/completions (backup)',
+            status_code: backupResponse.status,
+            response_time_ms: backupTime,
+            prompt_tokens: data.usage?.prompt_tokens || 0,
+            completion_tokens: data.usage?.completion_tokens || 0,
+            total_tokens: data.usage?.total_tokens || 0
+          })
+
+          const botResponse = data.choices[0].message.content
+          await logChat(business.id, messages, botResponse, supabase)
+
+          return NextResponse.json({ response: botResponse }, {
+            status: 200,
+            headers: { 'Access-Control-Allow-Origin': '*' }
+          })
+        }
+      }
+
+      // Log failed primary request
+      await supabase.from('api_requests_log').insert({
+        business_id: business.id,
+        endpoint: 'chat/completions',
+        status_code: response.status,
+        response_time_ms: responseTime,
+        error_message: 'Primary API Error'
+      })
+
       return NextResponse.json({ error: 'Failed to generate AI response' }, { 
         status: 500,
         headers: { 'Access-Control-Allow-Origin': '*' }
@@ -124,22 +210,18 @@ If the user asks who Virat Kohli or Elon Musk is, or the capital of France, retu
     const data = await response.json()
     const botResponse = data.choices[0].message.content
 
-    // Log the conversation (Requires "Public can insert chat logs" policy to be satisfied)
-    // The policy is: EXISTS (SELECT 1 FROM public.businesses WHERE businesses.id = chat_logs.business_id AND businesses.is_active = true)
-    // We already verified the business is active.
-    if (messages.length > 0) {
-      const userMessage = messages[messages.length - 1].content
-      // We wrap logging in try/catch to not fail the chat response if logging fails
-      try {
-        await supabase.from('chat_logs').insert([{
-          business_id: business.id,
-          user_message: userMessage,
-          bot_response: botResponse
-        }])
-      } catch (logErr) {
-        console.error("Failed to log chat:", logErr)
-      }
-    }
+    // Log successful primary request
+    await supabase.from('api_requests_log').insert({
+      business_id: business.id,
+      endpoint: 'chat/completions',
+      status_code: response.status,
+      response_time_ms: responseTime,
+      prompt_tokens: data.usage?.prompt_tokens || 0,
+      completion_tokens: data.usage?.completion_tokens || 0,
+      total_tokens: data.usage?.total_tokens || 0
+    })
+
+    await logChat(business.id, messages, botResponse, supabase)
 
     return NextResponse.json({ response: botResponse }, {
       status: 200,
@@ -152,5 +234,20 @@ If the user asks who Virat Kohli or Elon Musk is, or the capital of France, retu
       status: 500,
       headers: { 'Access-Control-Allow-Origin': '*' }
     })
+  }
+}
+
+async function logChat(businessId: string, messages: any[], botResponse: string, supabase: any) {
+  if (messages.length > 0) {
+    const userMessage = messages[messages.length - 1].content
+    try {
+      await supabase.from('chat_logs').insert([{
+        business_id: businessId,
+        user_message: userMessage,
+        bot_response: botResponse
+      }])
+    } catch (logErr) {
+      console.error("Failed to log chat:", logErr)
+    }
   }
 }
